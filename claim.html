@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#080d19">
+  <title>Claim Roblox Key</title>
+  <script src="https://js.hcaptcha.com/1/api.js?render=explicit" async defer></script>
+  <style>
+    :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+    *{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;padding:18px;background:radial-gradient(ellipse at 18% 8%,#17315c 0,transparent 42%),#080d19;color:#edf3ff}
+    .card{width:min(100%,460px);padding:25px;border:1px solid #253a5d;border-radius:23px;background:rgba(13,22,39,.97);box-shadow:0 28px 90px #0009}
+    .tag{color:#9fc4ff;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}h1{margin:12px 0 8px;font-size:28px;letter-spacing:-.04em}.muted{margin:0;color:#a4b3cc;line-height:1.55;font-size:14px}
+    .captcha{display:flex;justify-content:center;min-height:80px;margin:22px 0 16px;overflow:hidden}.button{width:100%;min-height:49px;border:0;border-radius:13px;background:#397ee8;color:#fff;font-size:14px;font-weight:800;letter-spacing:.04em}.button:disabled{opacity:.5}
+    .status{min-height:22px;margin:13px 0;color:#f2c27c;font-size:13px;line-height:1.45}.keybox{display:none;width:100%;min-height:100px;padding:13px;border:1px solid #335177;border-radius:13px;background:#091321;color:#adf6c8;font:12px/1.5 ui-monospace,monospace;overflow-wrap:anywhere;resize:vertical}
+    .copy{display:none;margin-top:10px;background:#1b6a48}.small{margin:17px 0 0;color:#778aa9;font-size:11px;text-align:center;line-height:1.5}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <span class="tag">cortex access portal</span>
+    <h1>Claim Your Key</h1>
+    <p class="muted">Complete the human verification once. Your key will be linked to the Roblox account that created this request.</p>
+    <div class="captcha"><div id="captcha"></div></div>
+    <button class="button" id="claim" disabled>VERIFY &amp; GET KEY</button>
+    <p class="status" id="status" role="status" aria-live="polite">Loading verification…</p>
+    <textarea class="keybox" id="key" readonly spellcheck="false"></textarea>
+    <button class="button copy" id="copy">COPY KEY</button>
+    <p class="small">Never share your key. Claim links expire after 15 minutes. Keys expire automatically.</p>
+  </main>
+  <script>
+    (() => {
+      const ticket = new URLSearchParams(location.search).get('ticket') || '';
+      const claimButton = document.getElementById('claim');
+      const copyButton = document.getElementById('copy');
+      const statusEl = document.getElementById('status');
+      const keyBox = document.getElementById('key');
+      let captchaToken = '';
+      let captchaId = null;
+      let busy = false;
+
+      function showError(message) {
+        statusEl.textContent = message;
+        claimButton.disabled = false;
+        busy = false;
+        if (window.hcaptcha && captchaId !== null) hcaptcha.reset(captchaId);
+      }
+
+      async function init() {
+        if (!ticket) {
+          statusEl.textContent = 'This link has no claim ticket. Go back to Roblox and tap GET KEY again.';
+          return;
+        }
+        try {
+          const response = await fetch('/api/config', { cache: 'no-store' });
+          const config = await response.json();
+          if (!response.ok || !config.ok || !config.sitekey) throw new Error('hCaptcha is not configured yet.');
+          const waitForCaptcha = () => {
+            if (!window.hcaptcha) return setTimeout(waitForCaptcha, 150);
+            captchaId = hcaptcha.render('captcha', {
+              sitekey: config.sitekey,
+              callback: token => { captchaToken = token; claimButton.disabled = false; statusEl.textContent = 'Verification complete. Tap the button to receive your key.'; },
+              'expired-callback': () => { captchaToken = ''; claimButton.disabled = true; statusEl.textContent = 'Verification expired. Complete it again.'; },
+              'error-callback': () => { captchaToken = ''; statusEl.textContent = 'Captcha could not load. Refresh and try again.'; }
+            });
+            statusEl.textContent = 'Complete the human verification below.';
+          };
+          waitForCaptcha();
+        } catch (error) {
+          statusEl.textContent = error.message || 'Could not load verification settings.';
+        }
+      }
+
+      claimButton.addEventListener('click', async () => {
+        if (busy) return;
+        if (!captchaToken) { statusEl.textContent = 'Complete hCaptcha first.'; return; }
+        busy = true;
+        claimButton.disabled = true;
+        statusEl.textContent = 'Verifying and creating your key…';
+        try {
+          const response = await fetch('/api/claim', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ticket, captchaToken })
+          });
+          const data = await response.json();
+          if (!response.ok || !data.ok) throw new Error(data.error || 'Could not issue your key.');
+          keyBox.value = data.key;
+          keyBox.style.display = 'block';
+          copyButton.style.display = 'block';
+          claimButton.style.display = 'none';
+          statusEl.textContent = `Key created. Valid for ${data.expiresInHours} hours.`;
+        } catch (error) {
+          showError(error.message || 'Something went wrong. Try again.');
+        }
+      });
+
+      copyButton.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(keyBox.value);
+          statusEl.textContent = 'Key copied. Return to Roblox and paste it into the key box.';
+        } catch {
+          keyBox.focus(); keyBox.select();
+          statusEl.textContent = 'Select and copy the key, then return to Roblox.';
+        }
+      });
+      init();
+    })();
+  </script>
+</body>
+</html>
